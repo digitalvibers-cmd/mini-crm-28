@@ -1,26 +1,46 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: Tahoma, Verdana, Segoe, sans-serif;
+  --font-heading: var(--font-prata), serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* New Branding Colors */
+  --primary: #9cbe48;
+  /* Secondary Green as main accent */
+  --primary-dark: #121333;
+  /* Tertiary Navy */
+  --primary-light: #f0fdf4;
+
+  --success: #9cbe48;
+  --success-light: #dcfce7;
+
+  --danger: #df0404;
+  --danger-light: #ffc5c5;
+
+  --text-primary: #121333;
+  /* Use Navy for primary text for branded feel */
+  --text-secondary: #9197b3;
+
+  --bg-sidebar: #ffffff;
+  --bg-main: #ffffff;
+  /* Requested Pure White */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Custom scrollbar for better aesthetics */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
 }
