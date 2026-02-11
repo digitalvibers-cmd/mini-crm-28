@@ -53,36 +53,39 @@ export async function GET(
                 created_at: data.created_at
             });
         } else {
-            // Fetch WooCommerce customer by phone from orders
-            const wcResponse = await api.get('orders', {
-                per_page: 100 // Get more orders to find phone match
+            // Fetch WooCommerce customer by phone/email using Customers API
+            const wcResponse = await api.get('customers', {
+                search: decodedId,
+                per_page: 10
             });
 
             if (!wcResponse.data || wcResponse.data.length === 0) {
                 return NextResponse.json({ error: 'Client not found' }, { status: 404 });
             }
 
-            // Find order with matching billing phone OR email
+            // Find customer with matching phone OR email
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const order = wcResponse.data.find((o: any) => {
+            const customer = wcResponse.data.find((c: any) => {
                 // Normalize phone numbers for comparison (remove spaces, dashes, etc.)
                 const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
-                const phoneMatch = normalizePhone(o.billing.phone) === normalizePhone(decodedId);
-                const emailMatch = o.billing.email?.toLowerCase() === decodedId.toLowerCase();
+                const phoneMatch = normalizePhone(c.billing?.phone) === normalizePhone(decodedId);
+                const emailMatch = c.email?.toLowerCase() === decodedId.toLowerCase();
                 return phoneMatch || emailMatch;
             });
 
-            if (!order) {
+            if (!customer) {
                 return NextResponse.json({ error: 'Client not found' }, { status: 404 });
             }
 
             return NextResponse.json({
-                id: order.billing.phone,
-                name: `${order.billing.first_name} ${order.billing.last_name}`,
-                email: order.billing.email,
-                phone: order.billing.phone,
-                address: `${order.billing.address_1}, ${order.billing.city}`,
-                source: 'woocommerce' as const
+                id: customer.billing?.phone || customer.email,
+                name: `${customer.billing?.first_name || customer.first_name || ''} ${customer.billing?.last_name || customer.last_name || ''}`.trim() || customer.email,
+                email: customer.email,
+                phone: customer.billing?.phone,
+                address: customer.billing?.address_1,
+                city: customer.billing?.city,
+                source: 'woocommerce' as const,
+                order_count: customer.orders_count || 0
             });
         }
     } catch (error) {
