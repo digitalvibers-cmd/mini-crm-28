@@ -35,7 +35,6 @@ export function OrderHistoryTable({ orders }: OrderHistoryTableProps) {
                         <th className="py-4 px-6 text-left font-bold">Proizvod</th>
                         <th className="py-4 px-6 text-left font-bold">Početak</th>
                         <th className="py-4 px-6 text-left font-bold">Trajanje</th>
-                        <th className="py-4 px-6 text-left font-bold">Status</th>
                         <th className="py-4 px-6 text-left font-bold">Plaćanje</th>
                     </tr>
                 </thead>
@@ -63,16 +62,6 @@ export function OrderHistoryTable({ orders }: OrderHistoryTableProps) {
                             <td className="py-4 px-6">{order.product}</td>
                             <td className="py-4 px-6">{order.startDate}</td>
                             <td className="py-4 px-6">{order.duration}</td>
-                            <td className="py-4 px-6">
-                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${order.status === 'completed' || order.status === 'completed'
-                                    ? 'bg-green-100 text-green-700'
-                                    : order.status === 'processing'
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'bg-slate-100 text-slate-700'
-                                    }`}>
-                                    {order.status}
-                                </span>
-                            </td>
                             <td className="py-4 px-6 lowercase">{order.payment_method}</td>
                         </tr>
                     ))}
