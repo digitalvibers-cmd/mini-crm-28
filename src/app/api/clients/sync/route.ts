@@ -9,12 +9,14 @@ const api = new WooCommerceRestApi({
     version: 'wc/v3'
 });
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(request: Request) {
+    // Initialize Supabase Admin client at runtime to avoid build-time errors
+    // if the env var is missing during the build process.
+    const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     try {
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
