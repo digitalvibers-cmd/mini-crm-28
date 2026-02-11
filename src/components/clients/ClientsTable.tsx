@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Plus, Mail, Phone, MapPin } from "lucide-react";
+import { Search, Plus, Mail, Phone, MapPin, Calendar } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CreateClientModal } from "../orders/CreateClientModal";
@@ -16,6 +16,7 @@ interface Client {
     source: 'woocommerce' | 'manual';
     supabase_id?: string;
     order_count?: number;
+    last_order_date?: string | null;
 }
 
 interface ClientsTableProps {
@@ -191,6 +192,13 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                                                     </div>
                                                 )}
                                             </div>
+
+                                            {client.last_order_date && (
+                                                <div className="flex items-center gap-2 text-slate-600 text-sm mt-2">
+                                                    <Calendar className="w-4 h-4 text-slate-400" />
+                                                    <span>Poslednja porudžbina: {new Date(client.last_order_date).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="text-right">

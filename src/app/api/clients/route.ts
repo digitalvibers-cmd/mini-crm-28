@@ -12,6 +12,7 @@ interface Client {
     source: 'woocommerce' | 'manual';
     supabase_id?: string;
     order_count?: number;
+    last_order_date?: string | null;
 }
 
 // GET all clients with pagination
@@ -74,7 +75,8 @@ export async function GET(request: Request) {
                     address: customer.billing?.address_1,
                     city: customer.billing?.city,
                     source: 'woocommerce' as const,
-                    order_count: customer.orders_count || 0
+                    order_count: customer.orders_count || 0,
+                    last_order_date: customer.date_modified || null
                 });
             }
         });
@@ -89,7 +91,8 @@ export async function GET(request: Request) {
             city: client.city,
             source: 'manual' as const,
             supabase_id: client.id,
-            order_count: 0 // TODO: Count orders per client
+            order_count: 0, // TODO: Count orders per client
+            last_order_date: null
         }));
 
         // Merge clients by phone number OR email
@@ -110,15 +113,27 @@ export async function GET(request: Request) {
 
             const existingClient = mergedClientsMap.get(key);
             if (existingClient) {
-                // Merge: keep CRM client but add WC order count
+                // Merge: keep CRM client but add WC order count and last order date
                 existingClient.order_count = (existingClient.order_count || 0) + (wcClient.order_count || 0);
+                existingClient.last_order_date = wcClient.last_order_date;
             } else {
                 // Add new WC client
                 mergedClientsMap.set(key, wcClient);
             }
         });
 
-        const allClients = Array.from(mergedClientsMap.values());
+        // Sort by last order date (most recent first), then by name
+        const allClients = Array.from(mergedClientsMap.values())
+            .sort((a, b) => {
+                // Clients with orders first
+                if (!a.last_order_date && b.last_order_date) return 1;
+                if (a.last_order_date && !b.last_order_date) return -1;
+                if (!a.last_order_date && !b.last_order_date) {
+                    return a.name.localeCompare(b.name);
+                }
+                // Sort by date descending (most recent first)
+                return new Date(b.last_order_date!).getTime() - new Date(a.last_order_date!).getTime();
+            });
 
         // Calculate pagination metadata
         const totalCount = wcTotalCount + (manualTotalCount || 0);

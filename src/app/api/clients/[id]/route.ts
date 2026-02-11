@@ -62,12 +62,14 @@ export async function GET(
                 return NextResponse.json({ error: 'Client not found' }, { status: 404 });
             }
 
-            // Find order with matching billing phone
+            // Find order with matching billing phone OR email
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const order = wcResponse.data.find((o: any) => {
                 // Normalize phone numbers for comparison (remove spaces, dashes, etc.)
                 const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
-                return normalizePhone(o.billing.phone) === normalizePhone(decodedId);
+                const phoneMatch = normalizePhone(o.billing.phone) === normalizePhone(decodedId);
+                const emailMatch = o.billing.email?.toLowerCase() === decodedId.toLowerCase();
+                return phoneMatch || emailMatch;
             });
 
             if (!order) {
