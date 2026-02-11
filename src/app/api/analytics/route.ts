@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
 import { wooCommerceApi } from '@/lib/woocommerce';
+import { supabase } from '@/lib/supabase';
 
 export async function GET() {
     try {
-        // Fetch Total Customers
-        const customersResponse = await wooCommerceApi.get("customers", { per_page: 1 });
-        const totalCustomers = customersResponse.headers['x-wp-total'] || 0;
+        // Fetch Total Customers from DB View (Unified Manual + Cached Woo)
+        const { count: totalCustomers, error: dbError } = await supabase
+            .from('all_clients_view')
+            .select('*', { count: 'exact', head: true });
+
+        if (dbError) {
+            console.error("Supabase Error counting clients:", dbError);
+        }
 
         // Fetch Total Orders (Members/Active proxy)
         const ordersResponse = await wooCommerceApi.get("orders", { per_page: 1 });
@@ -54,7 +60,7 @@ export async function GET() {
         }
 
         return NextResponse.json({
-            totalCustomers: parseInt(totalCustomers as string),
+            totalCustomers: totalCustomers || 0,
             totalOrders: parseInt(totalOrders as string),
             activeNow: parseInt(activeOrders as string),
             chartData

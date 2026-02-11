@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Search, Plus, Mail, Phone, MapPin, Calendar } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -27,29 +27,24 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
     const [searchTerm, setSearchTerm] = useState("");
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
+
+    // Pagination state
     const [pagination, setPagination] = useState({
         currentPage: 1,
-        perPage: 50,
+        perPage: 20, // Updated to 20 as requested
         totalPages: 1,
         totalCount: 0,
         hasMore: false
     });
-    const [currentPage, setCurrentPage] = useState(1);
-    const ITEMS_PER_PAGE = 10;
 
-    const fetchClients = async (page = 1, append = false) => {
+    const fetchClients = async (page = 1) => {
         try {
-            if (append) {
-                setLoadingMore(true);
-            } else {
-                setLoading(true);
-            }
+            setLoading(true);
 
             const params = new URLSearchParams({
                 page: page.toString(),
-                per_page: '50',
+                per_page: '20', // Updated to 20
             });
 
             if (searchTerm) {
@@ -61,47 +56,28 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
 
             const data = await res.json();
 
-            if (append) {
-                setClients(prev => [...prev, ...data.clients]);
-            } else {
-                setClients(data.clients);
-            }
-
+            setClients(data.clients);
             setPagination(data.pagination);
         } catch (error) {
             console.error('Failed to fetch clients:', error);
         } finally {
             setLoading(false);
-            setLoadingMore(false);
         }
     };
 
-    const handleLoadMore = () => {
-        fetchClients(pagination.currentPage + 1, true);
+    useEffect(() => {
+        // Debounce search
+        const timer = setTimeout(() => {
+            fetchClients(1);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage >= 1 && newPage <= pagination.totalPages) {
+            fetchClients(newPage);
+        }
     };
-
-    useEffect(() => {
-        fetchClients(1, false);
-    }, [searchTerm]);
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm]);
-
-    const filteredClients = clients.filter(client =>
-        client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (client.phone && client.phone.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-
-    const totalPages = Math.ceil(filteredClients.length / ITEMS_PER_PAGE);
-    const paginatedClients = filteredClients.slice(
-        (currentPage - 1) * ITEMS_PER_PAGE,
-        currentPage * ITEMS_PER_PAGE
-    );
-
-    const handlePrev = () => setCurrentPage(p => Math.max(1, p - 1));
-    const handleNext = () => setCurrentPage(p => Math.min(totalPages, p + 1));
 
     return (
         <div className="bg-white rounded-[30px] shadow-sm p-8">
@@ -143,89 +119,64 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                         <div className="inline-block w-8 h-8 border-4 border-slate-200 border-t-[#9cbe48] rounded-full animate-spin"></div>
                         <p className="mt-4">Učitavanje klijenata...</p>
                     </div>
-                ) : filteredClients.length === 0 ? (
+                ) : clients.length === 0 ? (
                     <div className="py-20 text-center text-slate-400">
                         <p>Nema pronađenih klijenata.</p>
                     </div>
                 ) : (
                     <div className="grid gap-4">
-                        {paginatedClients.map((client) => (
+                        {clients.map((client) => (
                             <ClientRow key={client.id} client={client} />
                         ))}
                     </div>
                 )}
             </div>
 
-            {/* Load More Button */}
-            {!loading && pagination.hasMore && (
-                <div className="mt-8 text-center">
-                    <button
-                        onClick={handleLoadMore}
-                        disabled={loadingMore}
-                        className="px-6 py-3 bg-[#9cbe48] text-white rounded-xl hover:bg-[#8bad3f] transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
-                    >
-                        {loadingMore ? (
-                            <>
-                                <div className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                Učitavanje...
-                            </>
-                        ) : (
-                            `Učitaj još (${pagination.totalCount - clients.length} preostalih)`
-                        )}
-                    </button>
-                </div>
-            )}
-
-            {/* Pagination */}
-            {!loading && totalPages > 1 && (
+            {/* Pagination Controls */}
+            {!loading && pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
                     <div className="text-sm text-slate-500">
-                        Prikazano {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredClients.length)} od {filteredClients.length}
+                        Strana {pagination.currentPage} od {pagination.totalPages}
                     </div>
 
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={handlePrev}
-                            disabled={currentPage === 1}
+                            onClick={() => handlePageChange(pagination.currentPage - 1)}
+                            disabled={pagination.currentPage === 1}
                             className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             &lt;
                         </button>
 
-                        <div className="flex items-center gap-1">
-                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                let p = i + 1;
-                                if (totalPages > 5) {
-                                    if (currentPage <= 3) {
-                                        p = i + 1;
-                                    } else if (currentPage >= totalPages - 2) {
-                                        p = totalPages - 4 + i;
-                                    } else {
-                                        p = currentPage - 2 + i;
-                                    }
-                                }
-                                if (p > totalPages) return null;
+                        {/* Simplified Pagination Logic */}
+                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                            let p = i + 1;
+                            // Centered window logic
+                            if (pagination.totalPages > 5) {
+                                if (pagination.currentPage <= 3) p = i + 1;
+                                else if (pagination.currentPage >= pagination.totalPages - 2) p = pagination.totalPages - 4 + i;
+                                else p = pagination.currentPage - 2 + i;
+                            }
 
-                                return (
-                                    <button
-                                        key={p}
-                                        onClick={() => setCurrentPage(p)}
-                                        className={cn(
-                                            "w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all",
-                                            currentPage === p
-                                                ? "bg-[#9cbe48] text-white shadow-md shadow-emerald-100"
-                                                : "border border-slate-200 hover:bg-slate-50 text-slate-500"
-                                        )}
-                                    >
-                                        {p}
-                                    </button>
-                                );
-                            })}
-                        </div>
+                            return (
+                                <button
+                                    key={p}
+                                    onClick={() => handlePageChange(p)}
+                                    className={cn(
+                                        "w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all",
+                                        pagination.currentPage === p
+                                            ? "bg-[#9cbe48] text-white shadow-md shadow-emerald-100"
+                                            : "border border-slate-200 hover:bg-slate-50 text-slate-500"
+                                    )}
+                                >
+                                    {p}
+                                </button>
+                            );
+                        })}
 
                         <button
-                            onClick={handleNext}
-                            disabled={currentPage === totalPages}
+                            onClick={() => handlePageChange(pagination.currentPage + 1)}
+                            disabled={pagination.currentPage === pagination.totalPages}
                             className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             &gt;
@@ -238,7 +189,7 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 onSuccess={() => {
-                    fetchClients();
+                    fetchClients(pagination.currentPage);
                     setShowCreateModal(false);
                     onClientCreated?.();
                 }}
@@ -248,39 +199,7 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
 }
 
 function ClientRow({ client }: { client: Client }) {
-    const [stats, setStats] = useState({
-        count: client.order_count || 0,
-        lastOrderDate: client.last_order_date
-    });
-    const [loadingStats, setLoadingStats] = useState(false);
-    const hasFetched = useRef(false);
-
-    useEffect(() => {
-        // Only fetch if source is WC and count is 0 (likely Guest/Shadow user)
-        // And we haven't fetched yet for this client instance
-        if (client.source === 'woocommerce' && (client.order_count === 0 || client.order_count === undefined) && !hasFetched.current) {
-            hasFetched.current = true;
-            setLoadingStats(true);
-            const params = new URLSearchParams();
-            if (client.phone) params.append('phone', client.phone);
-            if (client.email) params.append('email', client.email);
-
-            fetch(`/api/clients/count?${params.toString()}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.order_count !== undefined) {
-                        setStats({
-                            count: data.order_count,
-                            lastOrderDate: data.last_order_date || client.last_order_date
-                        });
-                    }
-                })
-                .catch(err => console.error('Failed to fetch stats', err))
-                .finally(() => setLoadingStats(false));
-        }
-    }, [client.id, client.source, client.order_count, client.phone, client.email, client.last_order_date]);
-
-    // Construct detail page URL - using UUID for both manual and cached clients (since we now have consistent IDs)
+    // Simplified Row: No internal fetching, uses DB view data directly
     const detailUrl = `/clients/${encodeURIComponent(client.id)}`;
 
     return (
@@ -299,12 +218,13 @@ function ClientRow({ client }: { client: Client }) {
                                 CRM
                             </span>
                         )}
+                        {/* Identify guests/woo clients if needed, or keep clean */}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                         <div className="flex items-center gap-2 text-slate-600">
                             <Mail className="w-4 h-4 text-slate-400" />
-                            <span>{client.email}</span>
+                            <span>{client.email || '-'}</span>
                         </div>
 
                         {client.phone && (
@@ -317,15 +237,15 @@ function ClientRow({ client }: { client: Client }) {
                         {(client.address || client.city) && (
                             <div className="flex items-center gap-2 text-slate-600">
                                 <MapPin className="w-4 h-4 text-slate-400" />
-                                <span>{client.address || client.city}</span>
+                                <span>{client.address || ''} {client.city || ''}</span>
                             </div>
                         )}
                     </div>
 
-                    {stats.lastOrderDate && (
+                    {client.last_order_date && (
                         <div className="flex items-center gap-2 text-slate-600 text-sm mt-2">
                             <Calendar className="w-4 h-4 text-slate-400" />
-                            <span>Poslednja porudžbina: {new Date(stats.lastOrderDate).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                            <span>Poslednja porudžbina: {new Date(client.last_order_date).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                         </div>
                     )}
                 </div>
@@ -333,11 +253,7 @@ function ClientRow({ client }: { client: Client }) {
                 <div className="text-right">
                     <div className="text-sm text-slate-500 mb-1">Porudžbine</div>
                     <div className="text-2xl font-bold text-[#121333]">
-                        {loadingStats ? (
-                            <span className="text-slate-300 text-lg animate-pulse">...</span>
-                        ) : (
-                            stats.count
-                        )}
+                        {client.order_count ?? 0}
                     </div>
                 </div>
             </div>
