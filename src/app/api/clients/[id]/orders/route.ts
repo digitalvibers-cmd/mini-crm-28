@@ -50,33 +50,39 @@ export async function GET(
 
             if (clientData?.phone) {
                 try {
+                    // Search by phone using WooCommerce API
                     const wcResponse = await api.get('orders', {
+                        search: clientData.phone,
                         per_page: 100
                     });
 
-                    // Filter orders by phone number
+                    // Filter orders by phone number (double check)
                     const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
                     const normalizedClientPhone = normalizePhone(clientData.phone);
+
                     wcOrders = (wcResponse.data || []).filter((order: any) =>
-                        normalizePhone(order.billing.phone) === normalizedClientPhone
+                        normalizePhone(order.billing?.phone) === normalizedClientPhone
                     );
                 } catch (wcError) {
                     console.error('WooCommerce API error:', wcError);
                 }
             }
         } else {
-            // WooCommerce client - fetch by phone
+            // WooCommerce client - fetch by phone or email
             try {
+                // Use robust search that finds Guests and matches Phone/Email
                 const wcResponse = await api.get('orders', {
+                    search: decodedId,
                     per_page: 100
                 });
 
-                // Filter by phone number
-                const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
-                const normalizedSearchPhone = normalizePhone(decodedId);
-                wcOrders = (wcResponse.data || []).filter((order: any) =>
-                    normalizePhone(order.billing.phone) === normalizedSearchPhone
-                );
+                // Robust filtering to match Phone OR Email
+                wcOrders = (wcResponse.data || []).filter((order: any) => {
+                    const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                    const phoneMatch = normalizePhone(order.billing?.phone) === normalizePhone(decodedId);
+                    const emailMatch = order.billing?.email?.toLowerCase() === decodedId.toLowerCase();
+                    return phoneMatch || emailMatch;
+                });
             } catch (wcError) {
                 console.error('WooCommerce API error:', wcError);
             }
