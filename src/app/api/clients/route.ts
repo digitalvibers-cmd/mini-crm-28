@@ -61,18 +61,18 @@ export async function GET(request: Request) {
         // Transform WooCommerce customers
         const wcClientsMap = new Map<string, Client>();
         wcCustomers.forEach((customer: any) => {
-            // Skip customers without phone
-            if (!customer.billing?.phone) return;
+            // Use phone if available, otherwise use email as identifier
+            const identifier = customer.billing?.phone || customer.email;
+            if (!identifier) return; // Skip if neither phone nor email exists
 
-            const phone = customer.billing.phone;
-            if (!wcClientsMap.has(phone)) {
-                wcClientsMap.set(phone, {
-                    id: phone,
-                    name: `${customer.billing.first_name} ${customer.billing.last_name}`,
+            if (!wcClientsMap.has(identifier)) {
+                wcClientsMap.set(identifier, {
+                    id: identifier,
+                    name: `${customer.billing?.first_name || customer.first_name || ''} ${customer.billing?.last_name || customer.last_name || ''}`.trim() || customer.email,
                     email: customer.email,
-                    phone: customer.billing.phone,
-                    address: customer.billing.address_1,
-                    city: customer.billing.city,
+                    phone: customer.billing?.phone,
+                    address: customer.billing?.address_1,
+                    city: customer.billing?.city,
                     source: 'woocommerce' as const,
                     order_count: customer.orders_count || 0
                 });
@@ -92,27 +92,29 @@ export async function GET(request: Request) {
             order_count: 0 // TODO: Count orders per client
         }));
 
-        // Merge clients by phone number
+        // Merge clients by phone number OR email
         const mergedClientsMap = new Map<string, Client>();
 
-        // First add manual clients
+        // First add manual clients (use phone as key if available)
         transformedManualClients.forEach(client => {
-            if (client.phone) {
-                mergedClientsMap.set(client.phone, client);
+            const key = client.phone || client.email;
+            if (key) {
+                mergedClientsMap.set(key, client);
             }
         });
 
         // Then merge WooCommerce clients
         Array.from(wcClientsMap.values()).forEach(wcClient => {
-            if (!wcClient.phone) return;
+            const key = wcClient.phone || wcClient.email;
+            if (!key) return;
 
-            const existingClient = mergedClientsMap.get(wcClient.phone);
+            const existingClient = mergedClientsMap.get(key);
             if (existingClient) {
                 // Merge: keep CRM client but add WC order count
                 existingClient.order_count = (existingClient.order_count || 0) + (wcClient.order_count || 0);
             } else {
                 // Add new WC client
-                mergedClientsMap.set(wcClient.phone, wcClient);
+                mergedClientsMap.set(key, wcClient);
             }
         });
 
