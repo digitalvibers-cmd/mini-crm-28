@@ -53,40 +53,97 @@ export async function GET(
                 created_at: data.created_at
             });
         } else {
-            // Fetch WooCommerce customer by phone/email using Customers API
-            const wcResponse = await api.get('customers', {
+            // Strategy: Search ORDERS first because:
+            // 1. It supports searching by phone (Customers API 'search' does not reliably)
+            // 2. It finds Guest users (who are not in Customers API)
+
+            const ordersResponse = await api.get('orders', {
                 search: decodedId,
-                per_page: 10
+                per_page: 100 // Fetch up to 100 to calculate guest order count if needed
             });
 
-            if (!wcResponse.data || wcResponse.data.length === 0) {
-                return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-            }
-
-            // Find customer with matching phone OR email
+            // Helper to check if order matches our ID (phone or email)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const customer = wcResponse.data.find((c: any) => {
-                // Normalize phone numbers for comparison (remove spaces, dashes, etc.)
-                const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
-                const phoneMatch = normalizePhone(c.billing?.phone) === normalizePhone(decodedId);
-                const emailMatch = c.email?.toLowerCase() === decodedId.toLowerCase();
-                return phoneMatch || emailMatch;
-            });
+            const findMatchingOrder = (orders: any[]) => {
+                return orders.find((o: any) => {
+                    const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                    const phoneMatch = normalizePhone(o.billing?.phone) === normalizePhone(decodedId);
+                    const emailMatch = o.billing?.email?.toLowerCase() === decodedId.toLowerCase();
+                    return phoneMatch || emailMatch;
+                });
+            };
 
-            if (!customer) {
-                return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+            const matchingOrder = ordersResponse.data ? findMatchingOrder(ordersResponse.data) : null;
+
+            if (matchingOrder) {
+                // CASE 1: Client found in orders (Registered or Guest)
+
+                if (matchingOrder.customer_id > 0) {
+                    // Registered Customer - Fetch full profile for accurate data
+                    try {
+                        const customerResponse = await api.get(`customers/${matchingOrder.customer_id}`);
+                        const customer = customerResponse.data;
+
+                        return NextResponse.json({
+                            id: customer.billing?.phone || customer.email,
+                            name: `${customer.billing?.first_name || customer.first_name || ''} ${customer.billing?.last_name || customer.last_name || ''}`.trim() || customer.email,
+                            email: customer.email,
+                            phone: customer.billing?.phone,
+                            address: customer.billing?.address_1,
+                            city: customer.billing?.city,
+                            source: 'woocommerce' as const,
+                            order_count: customer.orders_count || 0
+                        });
+                    } catch (e) {
+                        console.error('Error fetching registered customer details:', e);
+                        // Fallback to order details if customer fetch fails
+                    }
+                }
+
+                // Guest User (or fallback)
+                // Calculate order count from the search results
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const guestOrderCount = ordersResponse.data.filter((o: any) => {
+                    const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                    return normalizePhone(o.billing?.phone) === normalizePhone(decodedId) ||
+                        o.billing?.email?.toLowerCase() === decodedId.toLowerCase();
+                }).length;
+
+                return NextResponse.json({
+                    id: matchingOrder.billing.phone || matchingOrder.billing.email,
+                    name: `${matchingOrder.billing.first_name} ${matchingOrder.billing.last_name}`,
+                    email: matchingOrder.billing.email,
+                    phone: matchingOrder.billing.phone,
+                    address: `${matchingOrder.billing.address_1}, ${matchingOrder.billing.city}`,
+                    source: 'woocommerce' as const,
+                    order_count: guestOrderCount // Best effort count from search results
+                });
             }
 
-            return NextResponse.json({
-                id: customer.billing?.phone || customer.email,
-                name: `${customer.billing?.first_name || customer.first_name || ''} ${customer.billing?.last_name || customer.last_name || ''}`.trim() || customer.email,
-                email: customer.email,
-                phone: customer.billing?.phone,
-                address: customer.billing?.address_1,
-                city: customer.billing?.city,
-                source: 'woocommerce' as const,
-                order_count: customer.orders_count || 0
-            });
+            // CASE 2: Not found in orders. 
+            // If ID looks like an email, try searching Customers API directly
+            // (Customers with no orders?, or search param works better for email)
+            if (decodedId.includes('@')) {
+                const customerResponse = await api.get('customers', {
+                    email: decodedId // Exact match by email
+                });
+
+                if (customerResponse.data && customerResponse.data.length > 0) {
+                    const customer = customerResponse.data[0];
+                    return NextResponse.json({
+                        id: customer.billing?.phone || customer.email,
+                        name: `${customer.billing?.first_name} ${customer.billing?.last_name}`,
+                        email: customer.email,
+                        phone: customer.billing?.phone,
+                        address: customer.billing?.address_1,
+                        city: customer.billing?.city,
+                        source: 'woocommerce' as const,
+                        order_count: customer.orders_count || 0
+                    });
+                }
+            }
+
+            return NextResponse.json({ error: 'Client not found' }, { status: 404 });
         }
     } catch (error) {
         console.error('Error fetching client:', error);
