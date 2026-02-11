@@ -280,8 +280,8 @@ function ClientRow({ client }: { client: Client }) {
         }
     }, [client.id, client.source, client.order_count, client.phone, client.email, client.last_order_date]);
 
-    // Construct detail page URL - using phone for WC clients, UUID for manual
-    const detailUrl = `/clients/${encodeURIComponent(client.source === 'manual' ? client.supabase_id! : client.phone!)}`;
+    // Construct detail page URL - using UUID for both manual and cached clients (since we now have consistent IDs)
+    const detailUrl = `/clients/${encodeURIComponent(client.id)}`;
 
     return (
         <Link

@@ -28,47 +28,77 @@ export async function GET(
         let manualOrders: any[] = [];
 
         if (isUUID(decodedId)) {
-            // CRM client - fetch manual orders by client_id
-            const { data, error } = await supabase
-                .from('manual_orders_with_client')
-                .select('*')
-                .eq('client_id', decodedId)
-                .order('start_date', { ascending: false });
-
-            if (error) {
-                console.error('Supabase error:', error);
-            } else {
-                manualOrders = data || [];
-            }
-
-            // Also fetch WooCommerce orders by phone
-            const { data: clientData } = await supabase
+            // 1. Try Manual Clients
+            const { data: manualClient } = await supabase
                 .from('manual_clients')
-                .select('phone')
+                .select('phone, email') // Get email too
                 .eq('id', decodedId)
                 .single();
 
-            if (clientData?.phone) {
-                try {
-                    // Search by phone using WooCommerce API
-                    const wcResponse = await api.get('orders', {
-                        search: clientData.phone,
-                        per_page: 100
-                    });
+            if (manualClient) {
+                // Fetch manual orders
+                const { data: mOrders } = await supabase
+                    .from('manual_orders_with_client')
+                    .select('*')
+                    .eq('client_id', decodedId)
+                    .order('start_date', { ascending: false });
+                manualOrders = mOrders || [];
 
-                    // Filter orders by phone number (double check)
-                    const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
-                    const normalizedClientPhone = normalizePhone(clientData.phone);
+                // Search Woo by phone/email
+                if (manualClient.phone || manualClient.email) {
+                    try {
+                        const searchValue = manualClient.phone || manualClient.email; // Search by phone preferrably? Or just search.
+                        const wcResponse = await api.get('orders', {
+                            search: searchValue, // API searches both
+                            per_page: 100
+                        });
 
-                    wcOrders = (wcResponse.data || []).filter((order: any) =>
-                        normalizePhone(order.billing?.phone) === normalizedClientPhone
-                    );
-                } catch (wcError) {
-                    console.error('WooCommerce API error:', wcError);
+                        // Filter properly
+                        const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                        const targetPhone = normalizePhone(manualClient.phone);
+                        const targetEmail = manualClient.email?.toLowerCase();
+
+                        wcOrders = (wcResponse.data || []).filter((order: any) => {
+                            const pMatch = targetPhone && normalizePhone(order.billing?.phone) === targetPhone;
+                            const eMatch = targetEmail && order.billing?.email?.toLowerCase() === targetEmail;
+                            return pMatch || eMatch;
+                        });
+                    } catch (e) { console.error(e); }
+                }
+            } else {
+                // 2. Try Cached Clients
+                const { data: cachedClient } = await supabase
+                    .from('cached_clients')
+                    .select('phone, email')
+                    .eq('id', decodedId)
+                    .single();
+
+                if (cachedClient) {
+                    // Get Woo orders for this cached client
+                    if (cachedClient.phone || cachedClient.email) {
+                        try {
+                            const searchValue = cachedClient.phone || cachedClient.email;
+                            const wcResponse = await api.get('orders', {
+                                search: searchValue,
+                                per_page: 100
+                            });
+
+                            // Filter properly
+                            const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                            const targetPhone = normalizePhone(cachedClient.phone);
+                            const targetEmail = cachedClient.email?.toLowerCase();
+
+                            wcOrders = (wcResponse.data || []).filter((order: any) => {
+                                const pMatch = targetPhone && normalizePhone(order.billing?.phone) === targetPhone;
+                                const eMatch = targetEmail && order.billing?.email?.toLowerCase() === targetEmail;
+                                return pMatch || eMatch;
+                            });
+                        } catch (e) { console.error(e); }
+                    }
                 }
             }
         } else {
-            // WooCommerce client - fetch by phone or email
+            // WooCommerce client - fetch by phone or email (legacy)
             try {
                 // Use robust search that finds Guests and matches Phone/Email
                 const wcResponse = await api.get('orders', {
@@ -116,6 +146,7 @@ export async function GET(
                 id: `#${order.id}`,
                 product: order.line_items.map((item: any) => item.name).join(", "),
                 startDate: startDate,
+                date: order.date_created, // Added date field
                 duration: duration,
                 status: order.status,
                 payment_method: order.payment_method_title,
@@ -139,6 +170,7 @@ export async function GET(
                 id: `M-${formattedId}#`,
                 product: order.product_name,
                 startDate: formatDate(order.start_date),
+                date: order.created_at || order.start_date, // Added date field (fallback to start_date)
                 duration: `${order.duration_days} dana`,
                 status: order.status,
                 payment_method: order.payment_method || 'gotovina',

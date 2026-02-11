@@ -27,31 +27,52 @@ export async function GET(
         // Check if it's a CRM client (UUID) or WooCommerce client (phone)
         if (isUUID(decodedId)) {
             // Fetch CRM client from Supabase
-            const { data, error } = await supabase
+            const { data: manualData, error: manualError } = await supabase
                 .from('manual_clients')
                 .select('*')
                 .eq('id', decodedId)
                 .single();
 
-            if (error) {
-                console.error('Supabase error:', error);
-                return NextResponse.json({ error: error.message }, { status: 500 });
+            if (manualData) {
+                // Format CRM client
+                return NextResponse.json({
+                    id: manualData.id,
+                    name: `${manualData.first_name} ${manualData.last_name}`,
+                    email: manualData.email,
+                    phone: manualData.phone,
+                    address: manualData.address,
+                    source: 'manual' as const,
+                    created_at: manualData.created_at
+                });
             }
 
-            if (!data) {
-                return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+            // If not in manual_clients, check cached_clients (Woo synced)
+            const { data: cachedData, error: cachedError } = await supabase
+                .from('cached_clients')
+                .select('*')
+                .eq('id', decodedId)
+                .single();
+
+            if (cachedData) {
+                return NextResponse.json({
+                    id: cachedData.id,
+                    name: `${cachedData.first_name} ${cachedData.last_name}`,
+                    email: cachedData.email, // cached_clients has email mapped
+                    phone: cachedData.phone,
+                    address: cachedData.address, // mapped from billing.address_1
+                    city: cachedData.city,
+                    source: 'woocommerce' as const, // Treat as Woo source for UI logic
+                    wc_customer_id: cachedData.wc_customer_id,
+                    order_count: cachedData.order_count
+                });
             }
 
-            // Format CRM client
-            return NextResponse.json({
-                id: data.id,
-                name: `${data.first_name} ${data.last_name}`,
-                email: data.email,
-                phone: data.phone,
-                address: data.address,
-                source: 'manual' as const,
-                created_at: data.created_at
-            });
+            if (manualError && cachedError) {
+                console.error('Supabase error:', manualError || cachedError);
+            }
+
+            // If neither found, return 404 (or could fall through to search if ID looks like phone? No, UUID is specific)
+            return NextResponse.json({ error: 'Client not found' }, { status: 404 });
         } else {
             // Strategy: Search ORDERS first because:
             // 1. It supports searching by phone (Customers API 'search' does not reliably)
