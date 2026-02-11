@@ -26,83 +26,62 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
     const [searchTerm, setSearchTerm] = useState("");
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [pagination, setPagination] = useState({
+        currentPage: 1,
+        perPage: 50,
+        totalPages: 1,
+        totalCount: 0,
+        hasMore: false
+    });
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
 
-    const fetchClients = async () => {
+    const fetchClients = async (page = 1, append = false) => {
         try {
-            setLoading(true);
+            if (append) {
+                setLoadingMore(true);
+            } else {
+                setLoading(true);
+            }
 
-            // Fetch from both sources
-            const [wcRes, manualRes] = await Promise.all([
-                fetch('/api/orders'), // We'll extract unique customers from orders
-                fetch('/api/clients/manual')
-            ]);
-
-            const wcOrders = await wcRes.json();
-            const manualClients = await manualRes.json();
-
-            // Extract unique WooCommerce customers from orders (using phone as key)
-            const wcClientsMap = new Map<string, Client>();
-            wcOrders.forEach((order: { customer: string; email: string; phone: string; address: string }) => {
-                // Skip orders without phone number
-                if (!order.phone) return;
-
-                if (!wcClientsMap.has(order.phone)) {
-                    wcClientsMap.set(order.phone, {
-                        id: order.phone, // Use phone as ID for WC clients
-                        name: order.customer,
-                        email: order.email,
-                        phone: order.phone,
-                        address: order.address,
-                        source: 'woocommerce' as const,
-                        order_count: 1
-                    });
-                } else {
-                    const existing = wcClientsMap.get(order.phone)!;
-                    existing.order_count = (existing.order_count || 0) + 1;
-                }
+            const params = new URLSearchParams({
+                page: page.toString(),
+                per_page: '50',
             });
 
-            // Transform manual clients
-            const transformedManualClients: Client[] = manualClients.map((client: {
-                id: string;
-                first_name: string;
-                last_name: string;
-                email: string;
-                phone?: string;
-                address?: string;
-                city?: string;
-            }) => ({
-                id: client.id, // Use UUID directly
-                name: `${client.first_name} ${client.last_name}`,
-                email: client.email,
-                phone: client.phone,
-                address: client.address,
-                city: client.city,
-                source: 'manual' as const,
-                supabase_id: client.id,
-                order_count: 0 // TODO: Count manual orders for this client
-            }));
+            if (searchTerm) {
+                params.append('search', searchTerm);
+            }
 
-            // Merge both sources
-            const allClients = [
-                ...transformedManualClients,
-                ...Array.from(wcClientsMap.values())
-            ];
+            const res = await fetch(`/api/clients?${params.toString()}`);
+            if (!res.ok) throw new Error('Failed to fetch clients');
 
-            setClients(allClients);
+            const data = await res.json();
+
+            if (append) {
+                setClients(prev => [...prev, ...data.clients]);
+            } else {
+                setClients(data.clients);
+            }
+
+            setPagination(data.pagination);
         } catch (error) {
             console.error('Failed to fetch clients:', error);
         } finally {
             setLoading(false);
+            setLoadingMore(false);
         }
     };
 
+    const handleLoadMore = () => {
+        fetchClients(pagination.currentPage + 1, true);
+    };
+
     useEffect(() => {
-        fetchClients();
-    }, []);
+        fetchClients(1, false);
+    }, [searchTerm]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -130,7 +109,7 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                 <div>
                     <h2 className="text-xl font-bold text-[#121333]">Svi Klijenti</h2>
                     <p className="text-sm text-slate-500 mt-1">
-                        {loading ? 'Učitavanje...' : `${filteredClients.length} ukupno`}
+                        {loading ? 'Učitavanje...' : `${pagination.totalCount} ukupno`}
                     </p>
                 </div>
 
@@ -227,6 +206,26 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                     </div>
                 )}
             </div>
+
+            {/* Load More Button */}
+            {!loading && pagination.hasMore && (
+                <div className="mt-8 text-center">
+                    <button
+                        onClick={handleLoadMore}
+                        disabled={loadingMore}
+                        className="px-6 py-3 bg-[#9cbe48] text-white rounded-xl hover:bg-[#8bad3f] transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
+                    >
+                        {loadingMore ? (
+                            <>
+                                <div className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                Učitavanje...
+                            </>
+                        ) : (
+                            `Učitaj još (${pagination.totalCount - clients.length} preostalih)`
+                        )}
+                    </button>
+                </div>
+            )}
 
             {/* Pagination */}
             {!loading && totalPages > 1 && (
