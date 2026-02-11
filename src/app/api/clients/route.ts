@@ -72,10 +72,49 @@ export async function GET(request: Request) {
 
         // Transform WooCommerce customers
         const wcClientsMap = new Map<string, Client>();
+
+        // Optimize: Fetch cached stats for all these customers in one go
+        const cacheKeys = wcCustomers
+            .map((c: any) => c.billing?.phone || c.email)
+            .filter(Boolean);
+
+        let cachedStatsMap = new Map<string, any>();
+        if (cacheKeys.length > 0) {
+            // Can't use .in with potentially large list if cleaner, but for <50 it's fine
+            // Splitting into chunks if necessary? 50 is fine for URL length usually.
+            const { data: cachedStats } = await supabase
+                .from('client_stats_cache')
+                .select('*')
+                .in('key', cacheKeys);
+
+            if (cachedStats) {
+                cachedStats.forEach((stat: any) => {
+                    cachedStatsMap.set(stat.key, stat);
+                });
+            }
+        }
+
         wcCustomers.forEach((customer: any) => {
             // Use phone if available, otherwise use email as identifier
             const identifier = customer.billing?.phone || customer.email;
             if (!identifier) return; // Skip if neither phone nor email exists
+
+            let orderCount = customer.orders_count || 0;
+            let lastOrderDate = customer.date_modified || null;
+
+            // Check cache
+            const cached = cachedStatsMap.get(identifier);
+            if (cached) {
+                const updatedTime = new Date(cached.updated_at).getTime();
+                const now = new Date().getTime();
+                const ttl = 4 * 60 * 60 * 1000; // 4 hours in ms
+
+                if (now - updatedTime < ttl) {
+                    // Valid cache
+                    orderCount = cached.order_count;
+                    lastOrderDate = cached.last_order_date;
+                }
+            }
 
             if (!wcClientsMap.has(identifier)) {
                 wcClientsMap.set(identifier, {
@@ -86,8 +125,8 @@ export async function GET(request: Request) {
                     address: customer.billing?.address_1,
                     city: customer.billing?.city,
                     source: 'woocommerce' as const,
-                    order_count: customer.orders_count || 0,
-                    last_order_date: customer.date_modified || null
+                    order_count: orderCount,
+                    last_order_date: lastOrderDate
                 });
             }
         });

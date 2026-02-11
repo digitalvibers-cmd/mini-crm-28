@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, Plus, Mail, Phone, MapPin, Calendar } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -253,10 +253,13 @@ function ClientRow({ client }: { client: Client }) {
         lastOrderDate: client.last_order_date
     });
     const [loadingStats, setLoadingStats] = useState(false);
+    const hasFetched = useRef(false);
 
     useEffect(() => {
         // Only fetch if source is WC and count is 0 (likely Guest/Shadow user)
-        if (client.source === 'woocommerce' && (client.order_count === 0 || client.order_count === undefined)) {
+        // And we haven't fetched yet for this client instance
+        if (client.source === 'woocommerce' && (client.order_count === 0 || client.order_count === undefined) && !hasFetched.current) {
+            hasFetched.current = true;
             setLoadingStats(true);
             const params = new URLSearchParams();
             if (client.phone) params.append('phone', client.phone);

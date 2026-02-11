@@ -41,9 +41,39 @@ export default function ClientsPage() {
     return (
         <div className="space-y-8">
             {/* Page Header */}
-            <div>
-                <h1 className="text-4xl font-bold text-[#121333] mb-2">Klijenti</h1>
-                <p className="text-slate-500">Upravljajte svim klijentima iz jednog mesta</p>
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-4xl font-bold text-[#121333] mb-2">Klijenti</h1>
+                    <p className="text-slate-500">Upravljajte svim klijentima iz jednog mesta</p>
+                </div>
+                <button
+                    onClick={async () => {
+                        if (confirm('Ovo će osvežiti listu klijenata iz svih porudžbina. Može potrajati par minuta. Nastavi?')) {
+                            setLoading(true);
+                            try {
+                                const res = await fetch('/api/clients/sync?force=true', { method: 'POST' });
+                                const data = await res.json();
+                                if (data.success) {
+                                    alert(data.message);
+                                    window.location.reload();
+                                } else {
+                                    alert('Greška: ' + data.error);
+                                }
+                            } catch (e) {
+                                alert('Greška pri sinhronizaciji');
+                            } finally {
+                                setLoading(false);
+                            }
+                        }
+                    }}
+                    disabled={loading}
+                    className="flex items-center space-x-2 px-4 py-2 bg-white text-slate-600 rounded-xl hover:bg-slate-50 border border-slate-200 transition-colors disabled:opacity-50"
+                >
+                    <svg className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>{loading ? 'Sinhronizacija...' : 'Osveži listu'}</span>
+                </button>
             </div>
 
             {/* Stats Cards */}

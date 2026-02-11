@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import WooCommerceRestApi from '@woocommerce/woocommerce-rest-api';
 
@@ -57,6 +58,30 @@ export async function GET(request: Request) {
                 new Date(b.date_created).getTime() - new Date(a.date_created).getTime()
             );
             lastOrderDate = matchingOrders[0].date_created;
+        }
+
+        // Cache the result in Supabase
+        // We use the search term (phone or email) as the key
+        const cacheKey = phone || email;
+        if (cacheKey) {
+            // Use Service Role Key for admin access to cache table
+            const supabaseAdmin = createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.SUPABASE_SERVICE_ROLE_KEY!
+            );
+
+            const { error: upsertError } = await supabaseAdmin
+                .from('client_stats_cache')
+                .upsert({
+                    key: cacheKey,
+                    order_count: orderCount,
+                    last_order_date: lastOrderDate,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'key' });
+
+            if (upsertError) {
+                console.error('Error caching stats:', upsertError);
+            }
         }
 
         return NextResponse.json({
