@@ -43,12 +43,15 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
             const wcOrders = await wcRes.json();
             const manualClients = await manualRes.json();
 
-            // Extract unique WooCommerce customers from orders
+            // Extract unique WooCommerce customers from orders (using phone as key)
             const wcClientsMap = new Map<string, Client>();
             wcOrders.forEach((order: { customer: string; email: string; phone: string; address: string }) => {
-                if (!wcClientsMap.has(order.email)) {
-                    wcClientsMap.set(order.email, {
-                        id: order.email, // Use email as ID for WC clients
+                // Skip orders without phone number
+                if (!order.phone) return;
+
+                if (!wcClientsMap.has(order.phone)) {
+                    wcClientsMap.set(order.phone, {
+                        id: order.phone, // Use phone as ID for WC clients
                         name: order.customer,
                         email: order.email,
                         phone: order.phone,
@@ -57,7 +60,7 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                         order_count: 1
                     });
                 } else {
-                    const existing = wcClientsMap.get(order.email)!;
+                    const existing = wcClientsMap.get(order.phone)!;
                     existing.order_count = (existing.order_count || 0) + 1;
                 }
             });
@@ -107,7 +110,8 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
 
     const filteredClients = clients.filter(client =>
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.email.toLowerCase().includes(searchTerm.toLowerCase())
+        client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (client.phone && client.phone.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     const totalPages = Math.ceil(filteredClients.length / ITEMS_PER_PAGE);
@@ -166,8 +170,8 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                 ) : (
                     <div className="grid gap-4">
                         {paginatedClients.map((client) => {
-                            // Construct detail page URL
-                            const detailUrl = `/clients/${encodeURIComponent(client.source === 'manual' ? client.supabase_id! : client.email)}`;
+                            // Construct detail page URL - using phone for WC clients, UUID for manual
+                            const detailUrl = `/clients/${encodeURIComponent(client.source === 'manual' ? client.supabase_id! : client.phone!)}`;
 
                             return (
                                 <Link

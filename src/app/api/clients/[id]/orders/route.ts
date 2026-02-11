@@ -9,7 +9,7 @@ const api = new WooCommerceRestApi({
     version: 'wc/v3'
 });
 
-// Helper to check if ID is UUID (CRM client) or email (WooCommerce)
+// Helper to check if ID is UUID (CRM client) or phone number (WooCommerce)
 function isUUID(str: string): boolean {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return uuidRegex.test(str);
@@ -41,32 +41,42 @@ export async function GET(
                 manualOrders = data || [];
             }
 
-            // Also fetch WooCommerce orders by email
+            // Also fetch WooCommerce orders by phone
             const { data: clientData } = await supabase
                 .from('manual_clients')
-                .select('email')
+                .select('phone')
                 .eq('id', decodedId)
                 .single();
 
-            if (clientData?.email) {
+            if (clientData?.phone) {
                 try {
                     const wcResponse = await api.get('orders', {
-                        search: clientData.email,
                         per_page: 100
                     });
-                    wcOrders = wcResponse.data;
+
+                    // Filter orders by phone number
+                    const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                    const normalizedClientPhone = normalizePhone(clientData.phone);
+                    wcOrders = (wcResponse.data || []).filter((order: any) =>
+                        normalizePhone(order.billing.phone) === normalizedClientPhone
+                    );
                 } catch (wcError) {
                     console.error('WooCommerce API error:', wcError);
                 }
             }
         } else {
-            // WooCommerce client - fetch by email
+            // WooCommerce client - fetch by phone
             try {
                 const wcResponse = await api.get('orders', {
-                    search: decodedId,
                     per_page: 100
                 });
-                wcOrders = wcResponse.data;
+
+                // Filter by phone number
+                const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                const normalizedSearchPhone = normalizePhone(decodedId);
+                wcOrders = (wcResponse.data || []).filter((order: any) =>
+                    normalizePhone(order.billing.phone) === normalizedSearchPhone
+                );
             } catch (wcError) {
                 console.error('WooCommerce API error:', wcError);
             }

@@ -9,7 +9,7 @@ const api = new WooCommerceRestApi({
     version: 'wc/v3'
 });
 
-// Helper to check if ID is UUID (CRM client) or email (WooCommerce)
+// Helper to check if ID is UUID (CRM client) or phone number (WooCommerce)
 function isUUID(str: string): boolean {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return uuidRegex.test(str);
@@ -24,7 +24,7 @@ export async function GET(
         const { id } = await params;
         const decodedId = decodeURIComponent(id);
 
-        // Check if it's a CRM client (UUID) or WooCommerce client (email)
+        // Check if it's a CRM client (UUID) or WooCommerce client (phone)
         if (isUUID(decodedId)) {
             // Fetch CRM client from Supabase
             const { data, error } = await supabase
@@ -53,26 +53,29 @@ export async function GET(
                 created_at: data.created_at
             });
         } else {
-            // Fetch WooCommerce customer by email from orders
+            // Fetch WooCommerce customer by phone from orders
             const wcResponse = await api.get('orders', {
-                search: decodedId, // Search by email
-                per_page: 10 // Get multiple to ensure we find a match
+                per_page: 100 // Get more orders to find phone match
             });
 
             if (!wcResponse.data || wcResponse.data.length === 0) {
                 return NextResponse.json({ error: 'Client not found' }, { status: 404 });
             }
 
-            // Find order with matching billing email
+            // Find order with matching billing phone
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const order = wcResponse.data.find((o: any) => o.billing.email.toLowerCase() === decodedId.toLowerCase());
+            const order = wcResponse.data.find((o: any) => {
+                // Normalize phone numbers for comparison (remove spaces, dashes, etc.)
+                const normalizePhone = (phone: string) => phone?.replace(/[\s-]/g, '') || '';
+                return normalizePhone(o.billing.phone) === normalizePhone(decodedId);
+            });
 
             if (!order) {
                 return NextResponse.json({ error: 'Client not found' }, { status: 404 });
             }
 
             return NextResponse.json({
-                id: order.billing.email,
+                id: order.billing.phone,
                 name: `${order.billing.first_name} ${order.billing.last_name}`,
                 email: order.billing.email,
                 phone: order.billing.phone,
