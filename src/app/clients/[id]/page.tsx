@@ -15,39 +15,39 @@ export default function ClientDetailPage() {
     const [client, setClient] = useState<any>(null);
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingOrders, setLoadingOrders] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
 
     useEffect(() => {
-        fetchClientData();
-        fetchOrders();
+        fetchData();
     }, [clientId]);
 
-    const fetchClientData = async () => {
+    const fetchData = async () => {
+        setLoading(true);
+        setLoadingOrders(true);
         try {
+            // Fetch client first
             const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}`);
             if (!res.ok) {
                 throw new Error('Client not found');
             }
             const data = await res.json();
             setClient(data);
-        } catch (err) {
-            console.error('Failed to fetch client:', err);
-            setError('Klijent nije pronađen');
-        } finally {
-            setLoading(false);
-        }
-    };
+            setLoading(false); // Client loaded, show UI
 
-    const fetchOrders = async () => {
-        try {
-            const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}/orders`);
-            if (res.ok) {
-                const data = await res.json();
-                setOrders(data);
+            // Fetch orders
+            const ordersRes = await fetch(`/api/clients/${encodeURIComponent(clientId)}/orders`);
+            if (ordersRes.ok) {
+                const ordersData = await ordersRes.json();
+                setOrders(ordersData);
             }
         } catch (err) {
-            console.error('Failed to fetch orders:', err);
+            console.error('Failed to fetch data:', err);
+            setError('Klijent nije pronađen');
+            setLoading(false);
+        } finally {
+            setLoadingOrders(false);
         }
     };
 
@@ -81,7 +81,7 @@ export default function ClientDetailPage() {
     };
 
     const handleEditSuccess = () => {
-        fetchClientData(); // Refresh client data after edit
+        fetchData(); // Refresh data after edit
     };
 
     if (loading) {
@@ -134,9 +134,17 @@ export default function ClientDetailPage() {
             {/* Order History */}
             <div>
                 <h3 className="text-2xl font-bold text-[#121333] mb-4">
-                    Istorija Porudžbina ({orders.length})
+                    Istorija Porudžbina {loadingOrders ? '' : `(${orders.length})`}
                 </h3>
-                <OrderHistoryTable orders={orders} />
+
+                {loadingOrders ? (
+                    <div className="bg-white rounded-[30px] shadow-sm p-12 text-center">
+                        <div className="inline-block w-8 h-8 border-4 border-slate-200 border-t-[#9cbe48] rounded-full animate-spin"></div>
+                        <p className="mt-4 text-slate-400">Učitavanje porudžbina...</p>
+                    </div>
+                ) : (
+                    <OrderHistoryTable orders={orders} />
+                )}
             </div>
 
             {/* Edit Modal */}
