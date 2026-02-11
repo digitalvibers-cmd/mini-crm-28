@@ -149,68 +149,9 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                     </div>
                 ) : (
                     <div className="grid gap-4">
-                        {paginatedClients.map((client) => {
-                            // Construct detail page URL - using phone for WC clients, UUID for manual
-                            const detailUrl = `/clients/${encodeURIComponent(client.source === 'manual' ? client.supabase_id! : client.phone!)}`;
-
-                            return (
-                                <Link
-                                    key={client.id}
-                                    href={detailUrl}
-                                    className="border border-slate-100 rounded-2xl p-5 hover:shadow-md hover:border-[#9cbe48]/30 transition-all block group"
-                                >
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-3">
-                                                <h3 className="font-bold text-lg text-[#121333] group-hover:text-[#9cbe48] transition-colors">
-                                                    {client.name}
-                                                </h3>
-                                                {client.source === 'manual' && (
-                                                    <span className="px-2 py-0.5 bg-[#9cbe48]/10 text-[#9cbe48] text-xs font-bold rounded uppercase">
-                                                        CRM
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                                <div className="flex items-center gap-2 text-slate-600">
-                                                    <Mail className="w-4 h-4 text-slate-400" />
-                                                    <span>{client.email}</span>
-                                                </div>
-
-                                                {client.phone && (
-                                                    <div className="flex items-center gap-2 text-slate-600">
-                                                        <Phone className="w-4 h-4 text-slate-400" />
-                                                        <span>{client.phone}</span>
-                                                    </div>
-                                                )}
-
-                                                {(client.address || client.city) && (
-                                                    <div className="flex items-center gap-2 text-slate-600">
-                                                        <MapPin className="w-4 h-4 text-slate-400" />
-                                                        <span>{client.address || client.city}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {client.last_order_date && (
-                                                <div className="flex items-center gap-2 text-slate-600 text-sm mt-2">
-                                                    <Calendar className="w-4 h-4 text-slate-400" />
-                                                    <span>Poslednja porudžbina: {new Date(client.last_order_date).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="text-right">
-                                            <div className="text-sm text-slate-500 mb-1">Porudžbine</div>
-                                            <div className="text-2xl font-bold text-[#121333]">
-                                                {client.order_count || 0}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Link>
-                            );
-                        })}
+                        {paginatedClients.map((client) => (
+                            <ClientRow key={client.id} client={client} />
+                        ))}
                     </div>
                 )}
             </div>
@@ -303,5 +244,100 @@ export function ClientsTable({ onClientCreated }: ClientsTableProps) {
                 }}
             />
         </div>
+    );
+}
+
+function ClientRow({ client }: { client: Client }) {
+    const [stats, setStats] = useState({
+        count: client.order_count || 0,
+        lastOrderDate: client.last_order_date
+    });
+    const [loadingStats, setLoadingStats] = useState(false);
+
+    useEffect(() => {
+        // Only fetch if source is WC and count is 0 (likely Guest/Shadow user)
+        if (client.source === 'woocommerce' && (client.order_count === 0 || client.order_count === undefined)) {
+            setLoadingStats(true);
+            const params = new URLSearchParams();
+            if (client.phone) params.append('phone', client.phone);
+            if (client.email) params.append('email', client.email);
+
+            fetch(`/api/clients/count?${params.toString()}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.order_count !== undefined) {
+                        setStats({
+                            count: data.order_count,
+                            lastOrderDate: data.last_order_date || client.last_order_date
+                        });
+                    }
+                })
+                .catch(err => console.error('Failed to fetch stats', err))
+                .finally(() => setLoadingStats(false));
+        }
+    }, [client.id, client.source, client.order_count, client.phone, client.email, client.last_order_date]);
+
+    // Construct detail page URL - using phone for WC clients, UUID for manual
+    const detailUrl = `/clients/${encodeURIComponent(client.source === 'manual' ? client.supabase_id! : client.phone!)}`;
+
+    return (
+        <Link
+            href={detailUrl}
+            className="border border-slate-100 rounded-2xl p-5 hover:shadow-md hover:border-[#9cbe48]/30 transition-all block group"
+        >
+            <div className="flex items-start justify-between">
+                <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                        <h3 className="font-bold text-lg text-[#121333] group-hover:text-[#9cbe48] transition-colors">
+                            {client.name}
+                        </h3>
+                        {client.source === 'manual' && (
+                            <span className="px-2 py-0.5 bg-[#9cbe48]/10 text-[#9cbe48] text-xs font-bold rounded uppercase">
+                                CRM
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        <div className="flex items-center gap-2 text-slate-600">
+                            <Mail className="w-4 h-4 text-slate-400" />
+                            <span>{client.email}</span>
+                        </div>
+
+                        {client.phone && (
+                            <div className="flex items-center gap-2 text-slate-600">
+                                <Phone className="w-4 h-4 text-slate-400" />
+                                <span>{client.phone}</span>
+                            </div>
+                        )}
+
+                        {(client.address || client.city) && (
+                            <div className="flex items-center gap-2 text-slate-600">
+                                <MapPin className="w-4 h-4 text-slate-400" />
+                                <span>{client.address || client.city}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {stats.lastOrderDate && (
+                        <div className="flex items-center gap-2 text-slate-600 text-sm mt-2">
+                            <Calendar className="w-4 h-4 text-slate-400" />
+                            <span>Poslednja porudžbina: {new Date(stats.lastOrderDate).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="text-right">
+                    <div className="text-sm text-slate-500 mb-1">Porudžbine</div>
+                    <div className="text-2xl font-bold text-[#121333]">
+                        {loadingStats ? (
+                            <span className="text-slate-300 text-lg animate-pulse">...</span>
+                        ) : (
+                            stats.count
+                        )}
+                    </div>
+                </div>
+            </div>
+        </Link>
     );
 }

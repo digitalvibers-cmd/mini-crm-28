@@ -42,13 +42,13 @@ export async function GET(request: Request) {
         }
 
         // Fetch manual clients from Supabase
-        let manualClientsQuery = supabase
+        const manualClientsQuery = supabase
             .from('manual_clients')
             .select('*', { count: 'exact' });
 
         // Apply search filter if provided
         if (searchQuery) {
-            manualClientsQuery = manualClientsQuery.or(
+            manualClientsQuery.or(
                 `first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`
             );
         }
@@ -57,6 +57,17 @@ export async function GET(request: Request) {
 
         if (error) {
             console.error('Supabase error:', error);
+        }
+
+        // Fetch manual orders for calculation
+        let manualOrders: any[] = [];
+        if (manualClients && manualClients.length > 0) {
+            const clientIds = manualClients.map((c: any) => c.id);
+            const { data: orders } = await supabase
+                .from('manual_orders_with_client')
+                .select('client_id, start_date')
+                .in('client_id', clientIds);
+            manualOrders = orders || [];
         }
 
         // Transform WooCommerce customers
@@ -82,18 +93,33 @@ export async function GET(request: Request) {
         });
 
         // Transform manual clients
-        const transformedManualClients: Client[] = (manualClients || []).map((client: any) => ({
-            id: client.id,
-            name: `${client.first_name} ${client.last_name}`,
-            email: client.email,
-            phone: client.phone,
-            address: client.address,
-            city: client.city,
-            source: 'manual' as const,
-            supabase_id: client.id,
-            order_count: 0, // TODO: Count orders per client
-            last_order_date: null
-        }));
+        const transformedManualClients: Client[] = (manualClients || []).map((client: any) => {
+            // Find orders for this client
+            const clientOrders = manualOrders.filter((o: any) => o.client_id === client.id);
+
+            // Calculate last order date
+            let lastOrderDate = null;
+            if (clientOrders.length > 0) {
+                // Sort by date desc
+                clientOrders.sort((a: any, b: any) =>
+                    new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+                );
+                lastOrderDate = clientOrders[0].start_date;
+            }
+
+            return {
+                id: client.id,
+                name: `${client.first_name} ${client.last_name}`,
+                email: client.email,
+                phone: client.phone,
+                address: client.address,
+                city: client.city,
+                source: 'manual' as const,
+                supabase_id: client.id,
+                order_count: clientOrders.length,
+                last_order_date: lastOrderDate
+            };
+        });
 
         // Merge clients by phone number OR email
         const mergedClientsMap = new Map<string, Client>();
