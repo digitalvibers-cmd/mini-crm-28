@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET || 'test-secret'; // Fallback for testing
+const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
 
 export async function POST(request: Request) {
     try {

@@ -1,7 +1,11 @@
 import 'dotenv/config';
 import crypto from 'crypto';
 
-const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET || 'test-secret';
+const WEBHOOK_SECRET = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
+if (!WEBHOOK_SECRET) {
+    console.error("Missing WOOCOMMERCE_WEBHOOK_SECRET");
+    process.exit(1);
+}
 const API_URL = 'http://localhost:3000/api/webhooks/woocommerce';
 
 // Mock Order Payload
@@ -27,7 +31,7 @@ async function testWebhook() {
 
     // Generate Signature
     const signature = crypto
-        .createHmac('sha256', WEBHOOK_SECRET)
+        .createHmac('sha256', WEBHOOK_SECRET as string)
         .update(body)
         .digest('base64');
 

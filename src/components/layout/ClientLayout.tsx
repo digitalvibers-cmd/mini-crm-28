@@ -1,5 +1,7 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+
 import { SidebarProvider, useSidebar } from "@/components/layout/SidebarContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { cn } from "@/lib/utils";
@@ -23,9 +25,16 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 }
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
+    const pathname = usePathname();
+    const isLoginPage = pathname === "/login";
+
     return (
         <SidebarProvider>
-            <LayoutContent>{children}</LayoutContent>
+            {isLoginPage ? (
+                children
+            ) : (
+                <LayoutContent>{children}</LayoutContent>
+            )}
         </SidebarProvider>
     );
 }
