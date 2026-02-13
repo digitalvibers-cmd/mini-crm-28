@@ -75,3 +75,89 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
+
+export async function PUT(request: Request) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Check Admin
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        if (profile?.role !== 'admin') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        // 2. Body
+        const { id, email, password, role } = await request.json();
+        if (!id) return NextResponse.json({ error: 'Missing User ID' }, { status: 400 });
+
+        // 3. Update User (Auth)
+        const updateData: any = {};
+        if (email) updateData.email = email;
+        if (password) updateData.password = password;
+
+        if (email || password) {
+            const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, updateData);
+            if (authError) return NextResponse.json({ error: authError.message }, { status: 400 });
+        }
+
+        // 4. Update Profile (Role)
+        if (role) {
+            const { error: profileError } = await supabaseAdmin
+                .from('profiles')
+                .update({ role })
+                .eq('id', id);
+
+            if (profileError) return NextResponse.json({ error: profileError.message }, { status: 400 });
+        }
+
+        return NextResponse.json({ success: true });
+
+    } catch (error: any) {
+        console.error('Update user error:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: Request) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Check Admin
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        if (profile?.role !== 'admin') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        // 2. Parse URL for ID
+        const { searchParams } = new URL(request.url);
+        const id = searchParams.get('id');
+
+        if (!id) return NextResponse.json({ error: 'Missing User ID' }, { status: 400 });
+
+        // 3. Delete User
+        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(id);
+        if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 400 });
+
+        return NextResponse.json({ success: true });
+
+    } catch (error: any) {
+        console.error('Delete user error:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}

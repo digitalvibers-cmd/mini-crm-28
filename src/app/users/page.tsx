@@ -15,15 +15,21 @@ interface UserProfile {
 }
 
 export default function UsersPage() {
+    const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+    const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
+
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
 
     // Form state
-    const [newUserEmail, setNewUserEmail] = useState('');
-    const [newUserPassword, setNewUserPassword] = useState('');
-    const [newUserRole, setNewUserRole] = useState<'admin' | 'user'>('user');
-    const [creating, setCreating] = useState(false);
+    const [formData, setFormData] = useState({
+        email: '',
+        password: '',
+        role: 'user' as 'admin' | 'user'
+    });
+
+    const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const supabase = createClient();
@@ -48,42 +54,75 @@ export default function UsersPage() {
         fetchUsers();
     }, [supabase]);
 
-    const handleCreateUser = async (e: React.FormEvent) => {
+    const handleOpenCreate = () => {
+        setEditingUser(null);
+        setFormData({ email: '', password: '', role: 'user' });
+        setError(null);
+        setShowModal(true);
+    };
+
+    const handleOpenEdit = (user: UserProfile) => {
+        setEditingUser(user);
+        setFormData({ email: user.email, password: '', role: user.role });
+        setError(null);
+        setShowModal(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setCreating(true);
+        setSubmitting(true);
         setError(null);
 
         try {
-            // Call API route to create user (since client SDK cannot create other users easily without being admin/service role)
-            // Wait, we need an API route for this because RLS prevents 'creating a user in auth.users' from client side?
-            // Yes, client side `signUp` logs you in. `admin.createUser` is only server side.
-            // So we need POST /api/admin/users
+            const method = editingUser ? 'PUT' : 'POST';
+            const body = {
+                ...formData,
+                id: editingUser?.id
+            };
 
             const res = await fetch('/api/admin/users', {
-                method: 'POST',
+                method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: newUserEmail,
-                    password: newUserPassword,
-                    role: newUserRole
-                })
+                body: JSON.stringify(body)
             });
 
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.error || 'Failed to create user');
+                throw new Error(data.error || 'Operation failed');
             }
 
             setShowModal(false);
-            setNewUserEmail('');
-            setNewUserPassword('');
             fetchUsers();
             router.refresh();
         } catch (err: any) {
             setError(err.message);
         } finally {
-            setCreating(false);
+            setSubmitting(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!deletingUser) return;
+        setSubmitting(true);
+
+        try {
+            const res = await fetch(`/api/admin/users?id=${deletingUser.id}`, {
+                method: 'DELETE',
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Delete failed');
+            }
+
+            setDeletingUser(null);
+            fetchUsers();
+            router.refresh();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -95,7 +134,7 @@ export default function UsersPage() {
                     <p className="text-slate-500 mt-2">Upravljanje pristupom sistemu</p>
                 </div>
                 <button
-                    onClick={() => setShowModal(true)}
+                    onClick={handleOpenCreate}
                     className="flex items-center gap-2 bg-[#121333] text-white px-6 py-3 rounded-xl hover:bg-[#121333]/90 transition-all font-medium shadow-lg shadow-[#121333]/20"
                 >
                     <UserPlus className="w-5 h-5" />
@@ -110,7 +149,7 @@ export default function UsersPage() {
                             <th className="py-5 px-8 text-left font-bold">Email</th>
                             <th className="py-5 px-8 text-left font-bold">Uloga</th>
                             <th className="py-5 px-8 text-left font-bold">Registrovan</th>
-                            <th className="py-5 px-8 text-right font-bold">ID</th>
+                            <th className="py-5 px-8 text-right font-bold w-40">Akcije</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -134,8 +173,23 @@ export default function UsersPage() {
                                     <td className="py-4 px-8 text-slate-500 text-sm">
                                         {new Date(user.created_at).toLocaleDateString()}
                                     </td>
-                                    <td className="py-4 px-8 text-right text-slate-400 font-mono text-xs">
-                                        {user.id.substring(0, 8)}...
+                                    <td className="py-4 px-8 text-right">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                onClick={() => handleOpenEdit(user)}
+                                                className="p-2 text-slate-400 hover:text-[#9cbe48] hover:bg-[#9cbe48]/10 rounded-lg transition-colors"
+                                                title="Izmeni"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                            </button>
+                                            <button
+                                                onClick={() => setDeletingUser(user)}
+                                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Obriši"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))
@@ -144,7 +198,7 @@ export default function UsersPage() {
                 </table>
             </div>
 
-            {/* Create User Modal */}
+            {/* Create/Edit User Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-[#121333]/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-8 relative animate-in fade-in zoom-in duration-200">
@@ -155,9 +209,11 @@ export default function UsersPage() {
                             ✕
                         </button>
 
-                        <h2 className="text-2xl font-bold text-[#121333] mb-6">Novi Korisnik</h2>
+                        <h2 className="text-2xl font-bold text-[#121333] mb-6">
+                            {editingUser ? 'Izmeni Korisnika' : 'Novi Korisnik'}
+                        </h2>
 
-                        <form onSubmit={handleCreateUser} className="space-y-4">
+                        <form onSubmit={handleSubmit} className="space-y-4">
                             {error && (
                                 <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
                                     {error}
@@ -169,19 +225,22 @@ export default function UsersPage() {
                                 <input
                                     type="email"
                                     required
-                                    value={newUserEmail}
-                                    onChange={e => setNewUserEmail(e.target.value)}
+                                    value={formData.email}
+                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
                                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Lozinka</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">
+                                    {editingUser ? 'Nova Lozinka (opciono)' : 'Lozinka'}
+                                </label>
                                 <input
                                     type="password"
-                                    required
-                                    value={newUserPassword}
-                                    onChange={e => setNewUserPassword(e.target.value)}
+                                    required={!editingUser}
+                                    value={formData.password}
+                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                    placeholder={editingUser ? "Ostavite prazno ako ne menjate" : ""}
                                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
                                 />
                             </div>
@@ -189,8 +248,8 @@ export default function UsersPage() {
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-2">Uloga</label>
                                 <select
-                                    value={newUserRole}
-                                    onChange={e => setNewUserRole(e.target.value as 'admin' | 'user')}
+                                    value={formData.role}
+                                    onChange={e => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
                                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
                                 >
                                     <option value="user">User</option>
@@ -200,12 +259,41 @@ export default function UsersPage() {
 
                             <button
                                 type="submit"
-                                disabled={creating}
+                                disabled={submitting}
                                 className="w-full bg-[#121333] text-white py-4 rounded-xl font-bold hover:bg-[#121333]/90 transition-all mt-4 disabled:opacity-50"
                             >
-                                {creating ? 'Kreiranje...' : 'Kreiraj Korisnika'}
+                                {submitting ? 'Čuvanje...' : (editingUser ? 'Sačuvaj Izmene' : 'Kreiraj Korisnika')}
                             </button>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deletingUser && (
+                <div className="fixed inset-0 bg-[#121333]/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-8 relative animate-in fade-in zoom-in duration-200 text-center">
+                        <h3 className="text-xl font-bold text-[#121333] mb-2">Obriši korisnika?</h3>
+                        <p className="text-slate-500 mb-6">
+                            Da li ste sigurni da želite da obrišete korisnika <strong>{deletingUser.email}</strong>?
+                            Ova akcija je nepovratna.
+                        </p>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setDeletingUser(null)}
+                                className="flex-1 py-3 rounded-xl border border-slate-200 font-medium hover:bg-slate-50 transition-colors"
+                            >
+                                Odustani
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                disabled={submitting}
+                                className="flex-1 py-3 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
+                            >
+                                {submitting ? 'Brisanje...' : 'Obriši'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

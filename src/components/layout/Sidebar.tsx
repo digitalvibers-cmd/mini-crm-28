@@ -80,7 +80,8 @@ export function Sidebar() {
         const usersItem = { icon: Users, label: "Korisnici (Admin)", href: "/users" };
         // Insert after Klijenti? Or at bottom?
         // Let's put it after Klijenti.
-        menuItems.splice(3, 0, usersItem);
+        // Insert at the end
+        menuItems.push(usersItem);
     }
 
     return (
