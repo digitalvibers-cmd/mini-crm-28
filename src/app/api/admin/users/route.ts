@@ -161,3 +161,60 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
+
+export async function GET(request: Request) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Check Admin
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        if (profile?.role !== 'admin') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        // 2. Fetch all users from Auth
+        const { data: { users }, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
+
+        if (usersError) {
+            return NextResponse.json({ error: usersError.message }, { status: 500 });
+        }
+
+        // 3. Fetch all profiles to get roles
+        const { data: profiles, error: profilesError } = await supabaseAdmin
+            .from('profiles')
+            .select('id, role');
+
+        if (profilesError) {
+            return NextResponse.json({ error: profilesError.message }, { status: 500 });
+        }
+
+        // 4. Merge data
+        // Map profiles by ID for easy lookup
+        const profileMap = new Map(profiles.map(p => [p.id, p]));
+
+        const mergedUsers = users.map(u => ({
+            id: u.id,
+            email: u.email,
+            created_at: u.created_at,
+            last_sign_in_at: u.last_sign_in_at,
+            role: profileMap.get(u.id)?.role || 'user' // Default to user if not found
+        }));
+
+        // Sort by created_at desc
+        mergedUsers.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        return NextResponse.json(mergedUsers);
+
+    } catch (error: any) {
+        console.error('List users error:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}

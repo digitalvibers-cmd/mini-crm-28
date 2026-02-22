@@ -12,6 +12,7 @@ interface UserProfile {
     email: string;
     role: 'admin' | 'user';
     created_at: string;
+    last_sign_in_at?: string;
 }
 
 export default function UsersPage() {
@@ -37,17 +38,16 @@ export default function UsersPage() {
 
     const fetchUsers = async () => {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            console.error('Error fetching users:', error);
-        } else {
+        try {
+            const res = await fetch('/api/admin/users');
+            if (!res.ok) throw new Error('Failed to fetch users');
+            const data = await res.json();
             setUsers(data as UserProfile[]);
+        } catch (error) {
+            console.error('Error fetching users:', error);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
@@ -146,13 +146,14 @@ export default function UsersPage() {
                 <table className="w-full">
                     <thead>
                         <tr className="bg-[#121333] text-white">
-                            <th className="py-5 px-8 text-left font-bold">Email</th>
-                            <th className="py-5 px-8 text-left font-bold">Uloga</th>
-                            <th className="py-5 px-8 text-left font-bold">Registrovan</th>
-                            <th className="py-5 px-8 text-right font-bold w-40">Akcije</th>
+                            <th className="py-5 px-8 text-left font-bold font-sans">Email</th>
+                            <th className="py-5 px-8 text-left font-bold font-sans">Uloga</th>
+                            <th className="py-5 px-8 text-left font-bold font-sans">Registrovan</th>
+                            <th className="py-5 px-8 text-left font-bold font-sans">Poslednja prijava</th>
+                            <th className="py-5 px-8 text-right font-bold w-40 font-sans">Akcije</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 font-sans">
                         {loading ? (
                             <tr><td colSpan={4} className="p-8 text-center text-slate-400">Učitavanje...</td></tr>
                         ) : users.length === 0 ? (
@@ -171,7 +172,22 @@ export default function UsersPage() {
                                         </span>
                                     </td>
                                     <td className="py-4 px-8 text-slate-500 text-sm">
-                                        {new Date(user.created_at).toLocaleDateString()}
+                                        {new Date(user.created_at).toLocaleDateString('sr-RS')}
+                                    </td>
+                                    <td className="py-4 px-8 text-slate-500 text-sm">
+                                        {user.last_sign_in_at ? (
+                                            <span className="text-slate-700">
+                                                {new Date(user.last_sign_in_at).toLocaleString('sr-RS', {
+                                                    day: '2-digit',
+                                                    month: '2-digit',
+                                                    year: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-400 italic">Nikad</span>
+                                        )}
                                     </td>
                                     <td className="py-4 px-8 text-right">
                                         <div className="flex items-center justify-end gap-2">
@@ -199,104 +215,108 @@ export default function UsersPage() {
             </div>
 
             {/* Create/Edit User Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-[#121333]/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-8 relative animate-in fade-in zoom-in duration-200">
-                        <button
-                            onClick={() => setShowModal(false)}
-                            className="absolute top-6 right-6 text-slate-400 hover:text-[#121333] transition-colors"
-                        >
-                            ✕
-                        </button>
+            {
+                showModal && (
+                    <div className="fixed inset-0 bg-[#121333]/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-xl w-full max-w-md p-8 relative animate-in fade-in zoom-in duration-200">
+                            <button
+                                onClick={() => setShowModal(false)}
+                                className="absolute top-6 right-6 text-slate-400 hover:text-[#121333] transition-colors"
+                            >
+                                ✕
+                            </button>
 
-                        <h2 className="text-2xl font-bold text-[#121333] mb-6">
-                            {editingUser ? 'Izmeni Korisnika' : 'Novi Korisnik'}
-                        </h2>
+                            <h2 className="text-2xl font-bold text-[#121333] mb-6">
+                                {editingUser ? 'Izmeni Korisnika' : 'Novi Korisnik'}
+                            </h2>
 
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            {error && (
-                                <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
-                                    {error}
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                {error && (
+                                    <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
+                                        {error}
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={formData.email}
+                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
+                                    />
                                 </div>
-                            )}
 
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-                                <input
-                                    type="email"
-                                    required
-                                    value={formData.email}
-                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
-                                />
-                            </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                                        {editingUser ? 'Nova Lozinka (opciono)' : 'Lozinka'}
+                                    </label>
+                                    <input
+                                        type="password"
+                                        required={!editingUser}
+                                        value={formData.password}
+                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        placeholder={editingUser ? "Ostavite prazno ako ne menjate" : ""}
+                                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
+                                    />
+                                </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    {editingUser ? 'Nova Lozinka (opciono)' : 'Lozinka'}
-                                </label>
-                                <input
-                                    type="password"
-                                    required={!editingUser}
-                                    value={formData.password}
-                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder={editingUser ? "Ostavite prazno ako ne menjate" : ""}
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
-                                />
-                            </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Uloga</label>
+                                    <select
+                                        value={formData.role}
+                                        onChange={e => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
+                                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
+                                    >
+                                        <option value="user">User</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Uloga</label>
-                                <select
-                                    value={formData.role}
-                                    onChange={e => setFormData({ ...formData, role: e.target.value as 'admin' | 'user' })}
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#9cbe48]/20 focus:border-[#9cbe48]"
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="w-full bg-[#121333] text-white py-4 rounded-xl font-bold hover:bg-[#121333]/90 transition-all mt-4 disabled:opacity-50"
                                 >
-                                    <option value="user">User</option>
-                                    <option value="admin">Admin</option>
-                                </select>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={submitting}
-                                className="w-full bg-[#121333] text-white py-4 rounded-xl font-bold hover:bg-[#121333]/90 transition-all mt-4 disabled:opacity-50"
-                            >
-                                {submitting ? 'Čuvanje...' : (editingUser ? 'Sačuvaj Izmene' : 'Kreiraj Korisnika')}
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Delete Confirmation Modal */}
-            {deletingUser && (
-                <div className="fixed inset-0 bg-[#121333]/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-8 relative animate-in fade-in zoom-in duration-200 text-center">
-                        <h3 className="text-xl font-bold text-[#121333] mb-2">Obriši korisnika?</h3>
-                        <p className="text-slate-500 mb-6">
-                            Da li ste sigurni da želite da obrišete korisnika <strong>{deletingUser.email}</strong>?
-                            Ova akcija je nepovratna.
-                        </p>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setDeletingUser(null)}
-                                className="flex-1 py-3 rounded-xl border border-slate-200 font-medium hover:bg-slate-50 transition-colors"
-                            >
-                                Odustani
-                            </button>
-                            <button
-                                onClick={handleDelete}
-                                disabled={submitting}
-                                className="flex-1 py-3 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
-                            >
-                                {submitting ? 'Brisanje...' : 'Obriši'}
-                            </button>
+                                    {submitting ? 'Čuvanje...' : (editingUser ? 'Sačuvaj Izmene' : 'Kreiraj Korisnika')}
+                                </button>
+                            </form>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+
+            {/* Delete Confirmation Modal */}
+            {
+                deletingUser && (
+                    <div className="fixed inset-0 bg-[#121333]/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-8 relative animate-in fade-in zoom-in duration-200 text-center">
+                            <h3 className="text-xl font-bold text-[#121333] mb-2">Obriši korisnika?</h3>
+                            <p className="text-slate-500 mb-6">
+                                Da li ste sigurni da želite da obrišete korisnika <strong>{deletingUser.email}</strong>?
+                                Ova akcija je nepovratna.
+                            </p>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setDeletingUser(null)}
+                                    className="flex-1 py-3 rounded-xl border border-slate-200 font-medium hover:bg-slate-50 transition-colors"
+                                >
+                                    Odustani
+                                </button>
+                                <button
+                                    onClick={handleDelete}
+                                    disabled={submitting}
+                                    className="flex-1 py-3 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
+                                >
+                                    {submitting ? 'Brisanje...' : 'Obriši'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }
